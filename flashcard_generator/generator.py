@@ -59,22 +59,19 @@ def generate_flashcards(slide_text: str) -> list[dict]:
     Each dict has keys: front, back, slide.
     Requires the ANTHROPIC_API_KEY environment variable to be set.
     """
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        print(
-            "Error: ANTHROPIC_API_KEY environment variable is not set.\n"
-            "Get your API key at https://console.anthropic.com/ and run:\n"
-            "  export ANTHROPIC_API_KEY='your-key-here'",
-            file=sys.stderr,
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise RuntimeError(
+            "ANTHROPIC_API_KEY environment variable is not set. "
+            "Get your API key at https://console.anthropic.com/"
         )
-        sys.exit(1)
 
-    client = anthropic.Anthropic()
+    client = anthropic.Anthropic(api_key=api_key)
 
     try:
-        with client.messages.stream(
-            model="claude-opus-4-6",
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
             max_tokens=16000,
-            thinking={"type": "adaptive"},
             system=SYSTEM_PROMPT,
             messages=[
                 {
@@ -86,23 +83,26 @@ def generate_flashcards(slide_text: str) -> list[dict]:
                     ),
                 }
             ],
-            output_config={
-                "format": {
-                    "type": "json_schema",
-                    "schema": OUTPUT_SCHEMA,
-                }
-            },
-        ) as stream:
-            response = stream.get_final_message()
+        )
     except anthropic.AuthenticationError:
-        print("Error: Invalid ANTHROPIC_API_KEY. Check your key and try again.",
-              file=sys.stderr)
-        sys.exit(1)
+        raise RuntimeError("Invalid ANTHROPIC_API_KEY. Check your key and try again.")
     except anthropic.APIConnectionError:
-        print("Error: Could not connect to the Anthropic API. Check your internet connection.",
-              file=sys.stderr)
-        sys.exit(1)
+        raise RuntimeError("Could not connect to the Anthropic API. Check your internet connection.")
 
-    text = next(b.text for b in response.content if b.type == "text")
-    data = json.loads(text)
-    return data["flashcards"]
+    text_blocks = [b.text for b in response.content if b.type == "text"]
+    if not text_blocks:
+        raise RuntimeError("No text response received from the API.")
+
+    raw = text_blocks[0].strip()
+    if not raw:
+        raise RuntimeError("Empty response received from the API.")
+
+    data = json.loads(raw)
+    if "flashcards" in data:
+        return data["flashcards"]
+
+    # If the model returned a raw array
+    if isinstance(data, list):
+        return data
+
+    raise RuntimeError("Unexpected response format from the API.")

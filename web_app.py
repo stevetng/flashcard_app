@@ -8,7 +8,7 @@ import tempfile
 
 from flask import Flask, request, jsonify, session, render_template, redirect, url_for
 
-from flashcard_generator.parser import extract_slides, format_slides_for_prompt
+from flashcard_generator.parser import extract_slides, format_slides_for_prompt, convert_ppt_to_pptx
 from flashcard_generator.generator import generate_flashcards
 
 app = Flask(__name__)
@@ -64,13 +64,25 @@ def generate():
         return jsonify({"error": "No file uploaded."}), 400
 
     file = request.files["file"]
-    if not file.filename or not file.filename.lower().endswith(".pptx"):
-        return jsonify({"error": "Please upload a .pptx file."}), 400
+    if not file.filename:
+        return jsonify({"error": "Please upload a .pptx or .ppt file."}), 400
 
+    filename_lower = file.filename.lower()
+    if not filename_lower.endswith((".pptx", ".ppt")):
+        return jsonify({"error": "Please upload a .pptx or .ppt file."}), 400
+
+    converted_path = None
     try:
-        with tempfile.NamedTemporaryFile(suffix=".pptx", delete=False) as tmp:
+        suffix = ".ppt" if filename_lower.endswith(".ppt") else ".pptx"
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
             file.save(tmp.name)
             tmp_path = tmp.name
+
+        # Convert .ppt to .pptx if needed
+        if suffix == ".ppt":
+            converted_path = convert_ppt_to_pptx(tmp_path)
+            os.unlink(tmp_path)
+            tmp_path = converted_path
 
         slides = extract_slides(tmp_path)
         if not slides:
@@ -87,7 +99,10 @@ def generate():
         return jsonify({"error": str(e)}), 500
     finally:
         if "tmp_path" in locals():
-            os.unlink(tmp_path)
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
 
 
 if __name__ == "__main__":

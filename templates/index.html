@@ -202,11 +202,83 @@
       margin-top: 16px;
     }
 
+    /* ---- EDIT BUTTON ON CARD ---- */
+    .edit-btn {
+      position: absolute;
+      bottom: 14px;
+      right: 16px;
+      background: none;
+      border: 1px solid #475569;
+      color: #94a3b8;
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: color .2s, border-color .2s;
+      z-index: 10;
+    }
+    .edit-btn:hover { color: #f1f5f9; border-color: #818cf8; }
+
+    /* ---- EDIT MODAL ---- */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.6);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.active { display: flex; }
+    .modal {
+      background: #1e293b;
+      border-radius: 16px;
+      padding: 32px;
+      width: 90%;
+      max-width: 520px;
+      box-shadow: 0 25px 50px rgba(0,0,0,.4);
+    }
+    .modal h3 {
+      font-size: 18px;
+      margin-bottom: 20px;
+      color: #f1f5f9;
+    }
+    .modal label {
+      display: block;
+      font-size: 13px;
+      color: #94a3b8;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+    }
+    .modal textarea {
+      width: 100%;
+      padding: 12px 14px;
+      border: 2px solid #334155;
+      border-radius: 10px;
+      background: #0f172a;
+      color: #f1f5f9;
+      font-size: 15px;
+      font-family: inherit;
+      resize: vertical;
+      min-height: 80px;
+      outline: none;
+      margin-bottom: 16px;
+      transition: border-color .2s;
+    }
+    .modal textarea:focus { border-color: #6366f1; }
+    .modal-btns {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+
     /* ---- BUTTONS ---- */
     .btn-row {
       display: flex;
       gap: 12px;
       justify-content: center;
+      flex-wrap: wrap;
     }
     .btn {
       padding: 14px 32px;
@@ -303,12 +375,12 @@
   <!-- UPLOAD -->
   <div id="upload-section">
     <h2>Upload a PowerPoint</h2>
-    <p class="subtitle">Drop a .pptx file and AI will create flashcards for you to study</p>
+    <p class="subtitle">Drop a .pptx or .ppt file and AI will create flashcards for you to study</p>
     <div class="dropzone" id="dropzone">
       <span class="icon">&#128218;</span>
-      <div class="label">Drag & drop your .pptx file here, or <span>browse</span></div>
-      <div class="hint">.pptx files only</div>
-      <input type="file" id="file-input" accept=".pptx">
+      <div class="label">Drag & drop your file here, or <span>browse</span></div>
+      <div class="hint">.pptx and .ppt files supported</div>
+      <input type="file" id="file-input" accept=".pptx,.ppt">
     </div>
     <div class="error-msg" id="error-msg"></div>
   </div>
@@ -337,11 +409,13 @@
           <div class="slide-label" id="card-slide">Slide 1</div>
           <div class="card-text" id="card-front-text"></div>
           <div class="flip-hint">Click to reveal answer</div>
+          <button class="edit-btn" onclick="event.stopPropagation(); openEdit()">Edit</button>
         </div>
         <div class="card-face card-back">
           <div class="side-label">Answer</div>
           <div class="slide-label" id="card-slide-back">Slide 1</div>
           <div class="card-text" id="card-back-text"></div>
+          <button class="edit-btn" onclick="event.stopPropagation(); openEdit()">Edit</button>
         </div>
       </div>
     </div>
@@ -389,6 +463,22 @@
 
 </div>
 
+<!-- EDIT MODAL -->
+<div class="modal-overlay" id="edit-modal">
+  <div class="modal">
+    <h3>Edit Flashcard</h3>
+    <label for="edit-front">Question</label>
+    <textarea id="edit-front" rows="3"></textarea>
+    <label for="edit-back">Answer</label>
+    <textarea id="edit-back" rows="3"></textarea>
+    <div class="modal-btns">
+      <button class="btn btn-outline" onclick="closeEdit()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveEdit()">Save</button>
+      <button class="btn btn-wrong" onclick="deleteCard()">Delete Card</button>
+    </div>
+  </div>
+</div>
+
 <script>
   let allFlashcards = [];
   let studyDeck = [];
@@ -397,6 +487,7 @@
   let wrong = 0;
   let missed = [];
   let isFlipped = false;
+  let isEditing = false;
 
   // --- Drag & drop ---
   const dropzone = document.getElementById('dropzone');
@@ -421,8 +512,9 @@
     const errEl = document.getElementById('error-msg');
     errEl.style.display = 'none';
 
-    if (!file.name.toLowerCase().endsWith('.pptx')) {
-      errEl.textContent = 'Please upload a .pptx file.';
+    const name = file.name.toLowerCase();
+    if (!name.endsWith('.pptx') && !name.endsWith('.ppt')) {
+      errEl.textContent = 'Please upload a .pptx or .ppt file.';
       errEl.style.display = 'block';
       return;
     }
@@ -491,6 +583,7 @@
   }
 
   function flipCard() {
+    if (isEditing) return;
     isFlipped = !isFlipped;
     document.getElementById('flashcard').classList.toggle('flipped', isFlipped);
     if (isFlipped) {
@@ -523,6 +616,61 @@
     }
   }
 
+  // --- Edit logic ---
+  function openEdit() {
+    isEditing = true;
+    const card = studyDeck[currentIndex];
+    document.getElementById('edit-front').value = card.front;
+    document.getElementById('edit-back').value = card.back;
+    document.getElementById('edit-modal').classList.add('active');
+    document.getElementById('edit-front').focus();
+  }
+
+  function closeEdit() {
+    isEditing = false;
+    document.getElementById('edit-modal').classList.remove('active');
+  }
+
+  function saveEdit() {
+    const card = studyDeck[currentIndex];
+    const newFront = document.getElementById('edit-front').value.trim();
+    const newBack = document.getElementById('edit-back').value.trim();
+
+    if (!newFront || !newBack) return;
+
+    card.front = newFront;
+    card.back = newBack;
+
+    // Also update in allFlashcards if this card exists there
+    const orig = allFlashcards.find(c => c === card);
+    if (orig) {
+      orig.front = newFront;
+      orig.back = newBack;
+    }
+
+    showCard();
+    closeEdit();
+  }
+
+  function deleteCard() {
+    const card = studyDeck[currentIndex];
+    studyDeck.splice(currentIndex, 1);
+
+    // Also remove from allFlashcards
+    const idx = allFlashcards.indexOf(card);
+    if (idx !== -1) allFlashcards.splice(idx, 1);
+
+    closeEdit();
+
+    if (studyDeck.length === 0) {
+      showResults();
+    } else {
+      if (currentIndex >= studyDeck.length) currentIndex = studyDeck.length - 1;
+      showCard();
+    }
+  }
+
+  // --- Results ---
   function showResults() {
     showSection('results');
     document.getElementById('stat-correct').textContent = correct;
@@ -584,13 +732,25 @@
 
   // Keyboard shortcuts
   document.addEventListener('keydown', e => {
+    if (isEditing) return;
     if (document.getElementById('study-section').style.display !== 'block') return;
     if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); flipCard(); }
+    if (e.key === 'e') { e.preventDefault(); openEdit(); }
     if (isFlipped) {
       if (e.key === 'ArrowRight' || e.key === 'y') markCard(true);
       if (e.key === 'ArrowLeft' || e.key === 'n') markCard(false);
       if (e.key === 's') skipCard();
     }
+  });
+
+  // Close modal on Escape
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && isEditing) closeEdit();
+  });
+
+  // Close modal on overlay click
+  document.getElementById('edit-modal').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeEdit();
   });
 </script>
 
