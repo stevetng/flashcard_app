@@ -83,6 +83,12 @@ def generate_flashcards(slide_text: str) -> list[dict]:
                     ),
                 }
             ],
+            output_config={
+                "format": {
+                    "type": "json_schema",
+                    "schema": OUTPUT_SCHEMA,
+                }
+            },
         )
     except anthropic.AuthenticationError:
         raise RuntimeError("Invalid ANTHROPIC_API_KEY. Check your key and try again.")
