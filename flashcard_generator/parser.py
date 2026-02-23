@@ -10,6 +10,14 @@ from pptx.util import Inches
 
 def convert_ppt_to_pptx(ppt_path: str) -> str:
     """Convert a .ppt file to .pptx using LibreOffice. Returns path to the new file."""
+    import shutil
+
+    if shutil.which("libreoffice") is None:
+        raise RuntimeError(
+            "LibreOffice is not installed. Please upload a .pptx file instead, "
+            "or install LibreOffice to enable .ppt support."
+        )
+
     out_dir = tempfile.mkdtemp()
     result = subprocess.run(
         ["libreoffice", "--headless", "--convert-to", "pptx", "--outdir", out_dir, ppt_path],
